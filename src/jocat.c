@@ -286,7 +286,7 @@ void *udp_thread(void *args)
                 info->rx_buff_head = new_head;
                 if (tx_bytes < rx_bytes) { fprintf(stderr, "potential data loss udp=%zd. serial = %d\n", rx_bytes, tx_bytes); }
             } else {
-                fprintf(stderr, "udp rx buffer full (capacity = %d)\n", info->rx_buff_mask);
+                fprintf(stderr, "udp rx buffer full (capacity = %d)\n", info->rx_buff_mask * sizeof (info->rx_buff[0]));
             }
         }
         if (info->udp_server->wset_flag) {
@@ -323,10 +323,10 @@ void *serial_thread(void *arg)
 
         if (rset_flag) {
             int room = 0;
-            if (info->rx_buff_head < info->tx_buff_tail) {
-                room = info->rx_buff_tail - info->rx_buff_head - 1;
+            if (info->rx_buff_head < info->rx_buff_tail) {
+                room = (info->rx_buff_tail - info->rx_buff_head - 1) & info->rx_buff_mask;
             } else {
-                room = info->rx_buff_mask - info->rx_buff_head;
+                room = (info->rx_buff_mask - info->rx_buff_head) & info->rx_buff_mask;
             }
             if (room > 0) {
                 int n = read(info->fd, &info->rx_buff[info->rx_buff_head], room);
