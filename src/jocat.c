@@ -16,9 +16,9 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#define RX_BUFFER_SIZE (2048)
-#define TX_BUFFER_SIZE (2048)
 #define UDP_PACKET_SIZE (1024)
+#define RX_BUFFER_SIZE UDP_PACKET_SIZE
+#define TX_BUFFER_SIZE UDP_PACKET_SIZE
 #define RX_UDP_PACKETS (16)
 #define TX_UDP_PACKETS (16)
 #define DEFAULT_LOOP_PACE (10)
@@ -92,8 +92,8 @@ typedef struct _UdpThreadInfo {
     unsigned int loop_pace;
     unsigned char rx_buff[RX_UDP_PACKETS][UDP_PACKET_SIZE];
     unsigned char tx_buff[TX_UDP_PACKETS][UDP_PACKET_SIZE];
-    unsigned char rx_len[RX_UDP_PACKETS];
-    unsigned char tx_len[TX_UDP_PACKETS];
+    unsigned int rx_len[RX_UDP_PACKETS];
+    unsigned int tx_len[TX_UDP_PACKETS];
     int rx_buff_head;
     int rx_buff_tail;
     int rx_buff_mask;
@@ -282,6 +282,7 @@ void *udp_thread(void *args)
                 uint8_t *rx_buff = info->rx_buff[info->rx_buff_head];
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
+                /* TODO */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
                 int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
                 if (tx_bytes < rx_bytes) { fprintf(stderr, "potential data loss udp=%zd. serial = %d\n", rx_bytes, tx_bytes); }
@@ -290,11 +291,16 @@ void *udp_thread(void *args)
             }
         }
         if (info->udp_server->wset_flag) {
-            if (info->tx_buff_head != info->tx_buff_tail) {
-                uint8_t *tx_buff = info->tx_buff[info->tx_buff_head];
-                unsigned int tx_len = info->tx_len[info->tx_buff_head];
+            if (info->tx_buff_tail != info->tx_buff_head) {
+                uint8_t *tx_buff = info->tx_buff[info->tx_buff_tail];
+                unsigned int tx_len = info->tx_len[info->tx_buff_tail];
+                tx_len = 16; /* TODO JSV */
                 ssize_t tx_bytes = sendto(server->socket_fd, tx_buff, tx_len, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
                 if (tx_bytes != tx_len) { fprintf(stderr, "udp unable to transmit entire packet %zd / %d", tx_bytes, tx_len); }
+                info->tx_buff_tail = (info->tx_buff_tail + 1) & info->tx_buff_mask;
+                SerialThreadInfo *serial_info = info->serial_thread_info;
+                /* clear out corresponding buffer in serial port buffers */
+                serial_info->rx_buff_tail = (serial_info->rx_buff_tail + tx_len) & serial_info->rx_buff_mask;
             }
         }
     }
@@ -323,15 +329,29 @@ void *serial_thread(void *arg)
 
         if (rset_flag) {
             int room = 0;
-            if (info->rx_buff_head < info->rx_buff_tail) {
-                room = (info->rx_buff_tail - info->rx_buff_head - 1) & info->rx_buff_mask;
+            /* TODO really work out this math */
+            if (info->rx_buff_head == info->rx_buff_tail) {
+                room = info->rx_buff_mask;
+            } else if (info->rx_buff_head < info->rx_buff_tail) {
+                room = (info->rx_buff_head - info->rx_buff_tail - 1) & info->rx_buff_mask;
             } else {
-                room = (info->rx_buff_mask - info->rx_buff_head) & info->rx_buff_mask;
+                room = (info->rx_buff_mask - info->rx_buff_head + 1) & info->rx_buff_mask;
             }
             if (room > 0) {
-                int n = read(info->fd, &info->rx_buff[info->rx_buff_head], room);
+                uint8_t *rx_buff = &info->rx_buff[info->rx_buff_head];
+                int n = read(info->fd, rx_buff, room);
+                UdpThreadInfo *udp_info = info->udp_thread_info;
+                uint8_t *tx_buff = udp_info->tx_buff[udp_info->tx_buff_head];
+                unsigned int max_tx_len = sizeof (udp_info->tx_buff[0]);
+                unsigned int tx_len = (n < max_tx_len) ? n : max_tx_len;
+                memcpy(tx_buff, rx_buff, tx_len);
+                udp_info->tx_len[info->tx_buff_head] = tx_len;
                 if (n > 0) {
                     info->rx_buff_head = (info->rx_buff_head + n) & info->rx_buff_mask;
+                }
+                int new_head = (udp_info->tx_buff_head + 1) & udp_info->tx_buff_mask;
+                if (new_head != udp_info->tx_buff_tail) {
+                    udp_info->tx_buff_head = new_head;
                 }
             }
         }
