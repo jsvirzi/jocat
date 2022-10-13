@@ -78,6 +78,7 @@ typedef struct _UdpServerInfo
     uint32_t keep_alive_expiry;
     unsigned char rset_flag;
     unsigned char wset_flag;
+    int echo_flag;
 } UdpServerInfo;
 
 struct _SerialThreadInfo;
@@ -103,11 +104,14 @@ typedef struct _UdpThreadInfo {
     int tx_buff_mask;
     struct _SerialThreadInfo *serial_thread_info; /* udp and serial threads know about each other */
     int closed_loop;
+    int echo_flag;
 } UdpThreadInfo;
 
 typedef struct _SerialThreadInfo {
     int fd;
     int run;
+    int debug;
+    int verbose;
     unsigned char rx_buff[SERIAL_RX_BUFFERS][SERIAL_RX_BUFFER_SIZE];
     unsigned char tx_buff[SERIAL_TX_BUFFERS][SERIAL_TX_BUFFER_SIZE];
     unsigned int rx_len[SERIAL_RX_BUFFERS];
@@ -289,6 +293,7 @@ void *udp_thread(void *args)
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
                 /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
+                if (info->verbose) { fprintf(stderr, "command = [%s] received with length = %zd\n", rx_buff, rx_bytes); }
                 int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
                 if (tx_bytes < rx_bytes) { fprintf(stderr, "potential data loss udp=%zd. serial = %d\n", rx_bytes, tx_bytes); }
@@ -302,7 +307,7 @@ void *udp_thread(void *args)
                 uint8_t *tx_buff = info->tx_buff[info->tx_buff_tail];
                 unsigned int tx_len = info->tx_len[info->tx_buff_tail];
                 ssize_t tx_bytes = sendto(server->socket_fd, tx_buff, tx_len, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
-                if (tx_bytes != tx_len) { fprintf(stderr, "udp unable to transmit entire packet %zd / %d", tx_bytes, tx_len); }
+                if ((tx_bytes > 0) && (tx_bytes != tx_len)) { fprintf(stderr, "udp unable to transmit entire packet %zd / %d", tx_bytes, tx_len); }
                 info->tx_buff_tail = (info->tx_buff_tail + 1) & info->tx_buff_mask;
 //                SerialThreadInfo *serial_info = info->serial_thread_info;
 //                /* clear out corresponding buffer in serial port buffers */
@@ -359,6 +364,7 @@ void *serial_thread(void *arg)
                 uint8_t *tx_buff = info->tx_buff[info->tx_buff_tail];
                 int n_send = info->tx_len[info->tx_buff_tail];
                 int n_sent = write(info->fd, tx_buff, n_send);
+                if (info->verbose) { fprintf(stderr, "command = [%s] (length = %d) emitted on uart\n", tx_buff, n_sent); }
                 if (n_sent > 0) {
                     info->tx_buff_tail = (info->tx_buff_tail + 1) & info->tx_buff_mask;
                 }
@@ -370,22 +376,22 @@ void *serial_thread(void *arg)
 
 int serial_xmit(SerialThreadInfo *info, uint8_t *tx_buff, int n)
 {
-    int idx = 0;
     int new_head = (info->tx_buff_head + 1) & info->tx_buff_mask;
-    while (new_head != info->tx_buff_tail) {
-        info->tx_buff[info->rx_buff_head] = tx_buff[idx++];
+    if (n > sizeof (info->tx_buff[0])) { return 0; } /* cannot do it */
+    if (new_head != info->tx_buff_tail) {
+        memcpy(info->tx_buff[info->tx_buff_head], tx_buff, n);
+        info->tx_len[info->tx_buff_head] = n;
         info->tx_buff_head = new_head;
-        if (idx == n) { break; }
-        new_head = (info->tx_buff_head + 1) & info->tx_buff_mask;
     }
-    return idx;
+    return n;
 }
 
 int serial_recv(SerialThreadInfo *info, uint8_t *rx_buff, int n)
 {
     int idx = 0;
     while (info->rx_buff_tail != info->rx_buff_head) {
-        rx_buff[idx++] = info->rx_buff[info->rx_buff_tail];
+        rx_buff[idx] = info->rx_buff[info->rx_buff_tail][idx];
+        ++idx;
         info->rx_buff_tail = (info->rx_buff_tail + 1) & info->rx_buff_mask;
         if (idx == n) { break; }
     }
@@ -427,6 +433,9 @@ int main(int argc, char **argv)
             do_listen = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-port") == 0) {
             udp_port = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-verbose") == 0) {
+            serial_thread_info.verbose = 1;
+            udp_thread_info.verbose = 1;
         } else if (strcmp(argv[i], "-flush") == 0) {
             do_flush = 1;
         }
@@ -464,14 +473,15 @@ int main(int argc, char **argv)
     pthread_setname_np(udp_thread_info.thread_id, udp_thread_info.thread_name);
 
     if (do_listen) {
-        sleep(do_listen);
+        delay_ms(do_listen);
+        // sleep(do_listen);
     } else {
         while (1) {
             sleep(1);
         }
     }
 
-    uint8_t rx_buff[RX_BUFFER_SIZE];
+    uint8_t rx_buff[SERIAL_RX_BUFFER_SIZE];
     int n = serial_recv(&serial_thread_info, rx_buff, sizeof (rx_buff) - 1);
     rx_buff[n] = 0;
     fprintf(stdout, "=> %s <=\n", rx_buff);
