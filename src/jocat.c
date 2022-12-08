@@ -401,7 +401,7 @@ void *udp_thread(void *args)
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
                 /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
-                if (info->verbose) { fprintf(stderr, "command = [%s] received with length = %zd\n", rx_buff, rx_bytes); }
+                if (info->verbose) { fprintf(stderr, "data = [%s] received with length = %zd\n", rx_buff, rx_bytes); }
                 int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
                 if (tx_bytes < rx_bytes) { fprintf(stderr, "potential data loss udp=%zd. serial = %d\n", rx_bytes, tx_bytes); }
@@ -471,7 +471,8 @@ void *ser_thread(void *arg)
             if (info->tx_buff_head != info->tx_buff_tail) {
                 uint8_t *tx_buff = info->tx_buff[info->tx_buff_tail];
                 int n_send = info->tx_len[info->tx_buff_tail];
-                int n_sent = write(info->fd, tx_buff, n_send);
+                int n_sent = n_send;
+                if (info->fd) { n_sent = write(info->fd, tx_buff, n_send); }
                 if (info->verbose) { fprintf(stderr, "command = [%s] (length = %d) emitted on uart\n", tx_buff, n_sent); }
                 if (n_sent > 0) {
                     info->tx_buff_tail = (info->tx_buff_tail + 1) & info->tx_buff_mask;
@@ -523,6 +524,7 @@ int main(int argc, char **argv)
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
+    int do_sim = 0;
 
     /* serial and udp threads start in known positions */
     initialize_serial_thread(&ser_thread_info);
@@ -538,7 +540,7 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "-debug") == 0) {
             debug = 1;
 		} else if (strcmp(argv[i], "-d") == 0) {
-            strcpy(dev_name, argv[++i]);
+            snprintf(dev_name, sizeof (dev_name), argv[++i]);
         } else if (strcmp(argv[i], "-listen") == 0) {
             do_listen = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-port") == 0) {
@@ -550,18 +552,25 @@ int main(int argc, char **argv)
             cmd_thread_info.verbose = 1;
         } else if (strcmp(argv[i], "-flush") == 0) {
             do_flush = 1;
+        } else if (strcmp(argv[i], "-sim") == 0) {
+            do_sim = 1;
         }
     }
 
-    ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR);
-    tcgetattr(ser_thread_info.fd, &termios);
-    cfmakeraw(&termios);
-    termios.c_cflag &= ~(CSTOPB | CRTSCTS | CSIZE);
-    termios.c_cflag |= (CS8 | CLOCAL);
-    cfsetspeed(&termios, baud_code);
-    termios.c_cc[VMIN] = vmin;
-    termios.c_cc[VTIME] = vtime;
-    tcsetattr(ser_thread_info.fd, TCSAFLUSH, &termios);
+    if (do_sim == 0) {
+        ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR);
+        tcgetattr(ser_thread_info.fd, &termios);
+        cfmakeraw(&termios);
+        termios.c_cflag &= ~(CSTOPB | CRTSCTS | CSIZE);
+        termios.c_cflag |= (CS8 | CLOCAL);
+        cfsetspeed(&termios, baud_code);
+        termios.c_cc[VMIN] = vmin;
+        termios.c_cc[VTIME] = vtime;
+        tcsetattr(ser_thread_info.fd, TCSAFLUSH, &termios);
+    }
+    else {
+        ser_thread_info.fd = 0;
+    }
 
     ser_thread_info.run = 1;
     udp_thread_info.run = 1;
@@ -580,7 +589,7 @@ int main(int argc, char **argv)
         return -1;
     }
     snprintf(ser_thread_info.thread_name, sizeof (ser_thread_info.thread_name), "ser-jocat");
-    pthread_setname_np(ser_thread_info.thread_id, ser_thread_info.thread_name);
+//    pthread_setname_np(ser_thread_info.thread_id, ser_thread_info.thread_name);
 
     /*** data over udp looper ***/
     status = pthread_create(&udp_thread_info.thread_id, NULL, udp_thread, &udp_thread_info);
@@ -589,7 +598,7 @@ int main(int argc, char **argv)
         return -1;
     }
     snprintf(udp_thread_info.thread_name, sizeof (udp_thread_info.thread_name), "udp-jocat");
-    pthread_setname_np(udp_thread_info.thread_id, udp_thread_info.thread_name);
+//    pthread_setname_np(udp_thread_info.thread_id, udp_thread_info.thread_name);
 
     /*** commands over looper ***/
     status = pthread_create(&cmd_thread_info.thread_id, NULL, cmd_thread, &cmd_thread_info);
@@ -598,7 +607,7 @@ int main(int argc, char **argv)
         return -1;
     }
     snprintf(cmd_thread_info.thread_name, sizeof (cmd_thread_info.thread_name), "cmd-jocat");
-    pthread_setname_np(cmd_thread_info.thread_id, cmd_thread_info.thread_name);
+//    pthread_setname_np(cmd_thread_info.thread_id, cmd_thread_info.thread_name);
 
     while (cmd_server->run) {
         sleep(1);
