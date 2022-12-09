@@ -463,7 +463,7 @@ void *ser_thread(void *arg)
     while (info->run) {
         delay_ms(1);
         struct timeval timeout;
-        timeout.tv_sec = 0;
+        timeout.tv_sec = 1; /* TODO JSV */
         timeout.tv_usec = info->loop_pace * 1000;
         fd_set rset;
         fd_set wset;
@@ -480,7 +480,16 @@ void *ser_thread(void *arg)
         if (rset_flag) { /* read from uart and populate rx buffer (into head) */
             static uint8_t tmp_rx_buff[7 * SERIAL_RX_BUFFER_SIZE / 8]; /* stay away from a complete buffer */
             int tmp_rx_len = read(info->fd, tmp_rx_buff, sizeof (tmp_rx_buff));
+            tmp_rx_buff[0] = 0x79; /* TODO */
             udp_xmit(info->udp_thread_info, tmp_rx_buff, tmp_rx_len);
+            if (info->verbose) {
+                fprintf(stderr, "%d bytes read from uart\n", tmp_rx_len);
+                for (int i = 0; i < tmp_rx_len; ++i) {
+                    fprintf(stderr, "%2.2d ", tmp_rx_buff[i]);
+                    if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
+                }
+                fprintf(stderr, "\n");
+            }
         }
 
         if (wset_flag) {
@@ -490,7 +499,7 @@ void *ser_thread(void *arg)
                 int n_sent = n_send;
                 if (info->fd) { n_sent = write(info->fd, tx_buff, n_send); }
                 if (info->verbose) {
-                    fprintf(stderr, "command = (length = %d) emitted on uart\n", n_sent);
+                    fprintf(stderr, "data(length = %d) emitted on uart\n", n_sent);
                     for (int i = 0; i < n_sent; ++i) {
                         fprintf(stderr, "%2.2d ", tx_buff[i]);
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
@@ -532,6 +541,48 @@ int serial_recv(SerThreadInfo *info, uint8_t *rx_buff, int n)
     return idx;
 }
 
+/* parity = 0 (no parity), = 1 odd parity, = 2 even parity */
+int initialize_serial_port(const char *dev, unsigned int baud, unsigned int canonical, int parity, int min_chars) {
+    int fd = open(dev, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    if(fd < 0) { return fd; }
+    fcntl(fd, F_SETFL, 0);
+    struct termios *settings, current_settings;
+
+    memset(&current_settings, 0, sizeof(current_settings));
+    tcgetattr(fd, &current_settings);
+
+    /* effect new settings */
+    settings = &current_settings;
+    cfmakeraw(settings);
+    if (parity == 0) {
+        settings->c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB | PARENB); /* no parity, one stop bit, no cts/rts, clear size */
+        settings->c_cflag |= CS8; /* eight bits */
+    } else if (parity == 1) {
+        settings->c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB); /* no parity, one stop bit, no cts/rts, clear size */
+        settings->c_cflag |= (CS8 | PARENB | PARODD); /* eight bits, odd parity */
+    } else if (parity == 2) {
+        settings->c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB); /* no parity, one stop bit, no cts/rts, clear size */
+        settings->c_cflag |= (CS8 | PARENB); /* eight bits, odd parity is clear for even parity */
+    }
+    settings->c_cflag |= (CLOCAL | CREAD); /* ignore carrier detect. enable receiver */
+    settings->c_iflag &= ~(IXON | IXOFF | IXANY | IGNPAR | IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
+    settings->c_iflag |= ( IGNPAR | IGNBRK);
+    settings->c_lflag &= ~(ECHOK | ECHOCTL | ECHOKE);
+    if (canonical) { settings->c_lflag |= ICANON; } /* set canonical */
+    else { settings->c_lflag &= ~ICANON; } /* or clear it */
+    settings->c_oflag &= ~(OPOST | ONLCR);
+    settings->c_cc[VMIN] = min_chars;
+    settings->c_cc[VTIME] = 1; /* 200ms timeout */
+
+    cfsetispeed(settings, baud);
+    cfsetospeed(settings, baud);
+
+    tcsetattr(fd, TCSANOW, settings); /* apply settings */
+    tcflush(fd, TCIOFLUSH);
+
+    return fd;
+}
+
 int main(int argc, char **argv)
 {
    /* 
@@ -542,7 +593,7 @@ int main(int argc, char **argv)
     struct termios termios;
     char dev_name[64];
     unsigned char latency = 5;
-    int baud = 115200;
+    // int baud = 115200;
     int baud_code = B115200;
     int udp_port = 55151;
     int cmd_port = 55152;
@@ -582,15 +633,18 @@ int main(int argc, char **argv)
     }
 
     if (do_sim == 0) {
-        ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR);
+        ser_thread_info.fd = initialize_serial_port(dev_name, baud_code, 0, 0, 0);
+#if 0
+        ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR | O_NONBLOCK);
         tcgetattr(ser_thread_info.fd, &termios);
         cfmakeraw(&termios);
-        termios.c_cflag &= ~(CSTOPB | CRTSCTS | CSIZE);
+        termios.c_cflag &= ~(CSTOPB | CRTSCTS | CSIZE | PARENB | PARODD);
         termios.c_cflag |= (CS8 | CLOCAL);
         cfsetspeed(&termios, baud_code);
         termios.c_cc[VMIN] = vmin;
         termios.c_cc[VTIME] = vtime;
         tcsetattr(ser_thread_info.fd, TCSAFLUSH, &termios);
+#endif
     }
     else {
         ser_thread_info.fd = 0;
