@@ -323,18 +323,20 @@ int process_rts(int fd, int flag)
 int process_command(CmdThreadInfo *info, uint8_t *rx_buff, unsigned int rx_bytes)
 {
     static const char dtr_command_str[] = "$DTR,";
-    static unsigned int dtr_command_len = sizeof (dtr_command_str);
+    static unsigned int dtr_command_len = sizeof (dtr_command_str) - 1;
     static const char rts_command_str[] = "$RTS,";
-    static unsigned int rts_command_len = sizeof (rts_command_str);
+    static unsigned int rts_command_len = sizeof (rts_command_str) - 1;
     static const char bye_command_str[] = "$BYE*";
-    static unsigned int bye_command_len = sizeof (bye_command_str);
+    static unsigned int bye_command_len = sizeof (bye_command_str) - 1;
 
     int status = ERROR_CODE_FAILURE; /* guilty until proven innocent */
     if (memcmp(rx_buff, dtr_command_str, dtr_command_len) == 0) {
-        int flag = (dtr_command_str[dtr_command_len] == '0') ? 0 : 1;
+        int flag = (rx_buff[dtr_command_len] == '0') ? 0 : 1;
+        flag = flag ? 0 : 1;
         status = process_dtr(info->serial_thread_info->fd, flag);
     } else if (memcmp(rx_buff, rts_command_str, rts_command_len) == 0) {
-        int flag = (rts_command_str[rts_command_len] == '0') ? 0 : 1;
+        int flag = (rx_buff[rts_command_len] == '0') ? 0 : 1;
+        flag = flag ? 0 : 1;
         status = process_rts(info->serial_thread_info->fd, flag);
     } else if (memcmp(rx_buff, bye_command_str, bye_command_len) == 0) {
         info->udp_server.run = 0;
@@ -359,7 +361,14 @@ void *cmd_thread(void *args)
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
                 /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
-                if (info->verbose) { fprintf(stderr, "command = [%s] received with length = %zd\n", rx_buff, rx_bytes); }
+                if (info->verbose) {
+                    fprintf(stderr, "cmmd [%s] received with length = %zd\n", rx_buff, rx_bytes);
+//                    for (int i = 0; i < rx_bytes; ++i) {
+//                        fprintf(stderr, "%2.2d ", rx_buff[i]);
+//                        if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
+//                    }
+//                    fprintf(stderr, "\n");
+                }
                 process_command(info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
             } else {
@@ -401,7 +410,14 @@ void *udp_thread(void *args)
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
                 /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
-                if (info->verbose) { fprintf(stderr, "data = [%s] received with length = %zd\n", rx_buff, rx_bytes); }
+                if (info->verbose) {
+                    fprintf(stderr, "data received with length = %zd\n", rx_bytes);
+                    for (int i = 0; i < rx_bytes; ++i) {
+                        fprintf(stderr, "%2.2d ", rx_buff[i]);
+                        if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
+                    }
+                    fprintf(stderr, "\n");
+                }
                 int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
                 if (tx_bytes < rx_bytes) { fprintf(stderr, "potential data loss udp=%zd. serial = %d\n", rx_bytes, tx_bytes); }
@@ -473,9 +489,16 @@ void *ser_thread(void *arg)
                 int n_send = info->tx_len[info->tx_buff_tail];
                 int n_sent = n_send;
                 if (info->fd) { n_sent = write(info->fd, tx_buff, n_send); }
-                if (info->verbose) { fprintf(stderr, "command = [%s] (length = %d) emitted on uart\n", tx_buff, n_sent); }
+                if (info->verbose) {
+                    fprintf(stderr, "command = (length = %d) emitted on uart\n", n_sent);
+                    for (int i = 0; i < n_sent; ++i) {
+                        fprintf(stderr, "%2.2d ", tx_buff[i]);
+                        if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
+                    }
+                    fprintf(stderr, "\n");
+                }
                 if (n_sent > 0) {
-                    info->tx_buff_tail = (info->tx_buff_tail + 1) & info->tx_buff_mask;
+                    info->tx_buff_tail = (info->tx_buff_tail + n_sent) & info->tx_buff_mask;
                 }
             }
         }
@@ -533,6 +556,7 @@ int main(int argc, char **argv)
 
     /* serial and udp threads bind to each other */
     udp_thread_info.serial_thread_info = &ser_thread_info;
+    cmd_thread_info.serial_thread_info = &ser_thread_info;
     ser_thread_info.udp_thread_info = &udp_thread_info;
 
     snprintf(dev_name, sizeof (dev_name), "/dev/ttyUSB0");
