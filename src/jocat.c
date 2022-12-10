@@ -17,6 +17,8 @@
 #include <netinet/in.h>
 #include <sys/ioctl.h>
 
+#include "serial-port.h"
+
 #define UDP_PACKET_SIZE (1024)
 #define SERIAL_RX_BUFFER_SIZE UDP_PACKET_SIZE
 #define SERIAL_TX_BUFFER_SIZE UDP_PACKET_SIZE
@@ -541,48 +543,6 @@ int serial_recv(SerThreadInfo *info, uint8_t *rx_buff, int n)
     return idx;
 }
 
-/* parity = 0 (no parity), = 1 odd parity, = 2 even parity */
-int initialize_serial_port(const char *dev, unsigned int baud, unsigned int canonical, int parity, int min_chars) {
-    int fd = open(dev, O_RDWR | O_NOCTTY | O_NONBLOCK);
-    if(fd < 0) { return fd; }
-    fcntl(fd, F_SETFL, 0);
-    struct termios *settings, current_settings;
-
-    memset(&current_settings, 0, sizeof(current_settings));
-    tcgetattr(fd, &current_settings);
-
-    /* effect new settings */
-    settings = &current_settings;
-    cfmakeraw(settings);
-    if (parity == 0) {
-        settings->c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB | PARENB); /* no parity, one stop bit, no cts/rts, clear size */
-        settings->c_cflag |= CS8; /* eight bits */
-    } else if (parity == 1) {
-        settings->c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB); /* no parity, one stop bit, no cts/rts, clear size */
-        settings->c_cflag |= (CS8 | PARENB | PARODD); /* eight bits, odd parity */
-    } else if (parity == 2) {
-        settings->c_cflag &= ~(CSIZE | CRTSCTS | CSTOPB); /* no parity, one stop bit, no cts/rts, clear size */
-        settings->c_cflag |= (CS8 | PARENB); /* eight bits, odd parity is clear for even parity */
-    }
-    settings->c_cflag |= (CLOCAL | CREAD); /* ignore carrier detect. enable receiver */
-    settings->c_iflag &= ~(IXON | IXOFF | IXANY | IGNPAR | IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL);
-    settings->c_iflag |= ( IGNPAR | IGNBRK);
-    settings->c_lflag &= ~(ECHOK | ECHOCTL | ECHOKE);
-    if (canonical) { settings->c_lflag |= ICANON; } /* set canonical */
-    else { settings->c_lflag &= ~ICANON; } /* or clear it */
-    settings->c_oflag &= ~(OPOST | ONLCR);
-    settings->c_cc[VMIN] = min_chars;
-    settings->c_cc[VTIME] = 1; /* 200ms timeout */
-
-    cfsetispeed(settings, baud);
-    cfsetospeed(settings, baud);
-
-    tcsetattr(fd, TCSANOW, settings); /* apply settings */
-    tcflush(fd, TCIOFLUSH);
-
-    return fd;
-}
-
 int main(int argc, char **argv)
 {
    /* 
@@ -595,10 +555,12 @@ int main(int argc, char **argv)
     unsigned char latency = 5;
     // int baud = 115200;
     int baud_code = B115200;
+    baud_code = B9600; /* TODO */
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
     int do_sim = 0;
+    int parity = 2;
 
     /* serial and udp threads start in known positions */
     initialize_serial_thread(&ser_thread_info);
@@ -615,7 +577,7 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "-debug") == 0) {
             debug = 1;
 		} else if (strcmp(argv[i], "-d") == 0) {
-            snprintf(dev_name, sizeof (dev_name), argv[++i]);
+            snprintf(dev_name, sizeof (dev_name), "%s", argv[++i]);
         } else if (strcmp(argv[i], "-listen") == 0) {
             do_listen = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-port") == 0) {
@@ -633,7 +595,7 @@ int main(int argc, char **argv)
     }
 
     if (do_sim == 0) {
-        ser_thread_info.fd = initialize_serial_port(dev_name, baud_code, 0, 0, 0);
+        ser_thread_info.fd = initialize_serial_port(dev_name, baud_code, 0, parity, 0);
 #if 0
         ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR | O_NONBLOCK);
         tcgetattr(ser_thread_info.fd, &termios);
