@@ -267,7 +267,7 @@ int check_udp_server(UdpServerInfo *server)
     FD_SET(socket_fd, &wset);
     fd_set *pset = (server->tx_dir_active) ? &wset : NULL; /* if we're not activating transmit path */
     int status = select(max_fd + 1, &rset, pset, NULL, &socket_timeout);
-    if (status <= 0) { return ERROR_CODE_NOT_READY; }
+    if (status < 0) { return ERROR_CODE_NOT_READY; }
 
     server->rset_flag = (FD_ISSET(server->socket_fd, &rset)) ? 1 : 0;
     server->wset_flag = (FD_ISSET(server->socket_fd, &wset)) ? 1 : 0;
@@ -411,16 +411,16 @@ void *udp_thread(void *args)
                 uint8_t *rx_buff = info->rx_buff[info->rx_buff_head];
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
+                int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
                 /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
                 if (info->verbose) {
-                    fprintf(stderr, "data received with length = %zd\n", rx_bytes);
+                    fprintf(stderr, "data received with length = %zd. sent to uart\n", rx_bytes);
                     for (int i = 0; i < rx_bytes; ++i) {
                         fprintf(stderr, "%2.2d ", rx_buff[i]);
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");
                 }
-                int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
                 if (tx_bytes < rx_bytes) { fprintf(stderr, "potential data loss udp=%zd. serial = %d\n", rx_bytes, tx_bytes); }
             } else {
@@ -482,10 +482,9 @@ void *ser_thread(void *arg)
         if (rset_flag) { /* read from uart and populate rx buffer (into head) */
             static uint8_t tmp_rx_buff[7 * SERIAL_RX_BUFFER_SIZE / 8]; /* stay away from a complete buffer */
             int tmp_rx_len = read(info->fd, tmp_rx_buff, sizeof (tmp_rx_buff));
-            tmp_rx_buff[0] = 0x79; /* TODO */
             udp_xmit(info->udp_thread_info, tmp_rx_buff, tmp_rx_len);
             if (info->verbose) {
-                fprintf(stderr, "%d bytes read from uart\n", tmp_rx_len);
+                fprintf(stderr, "uart rx %d bytes, tx to udp\n", tmp_rx_len);
                 for (int i = 0; i < tmp_rx_len; ++i) {
                     fprintf(stderr, "%2.2d ", tmp_rx_buff[i]);
                     if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
@@ -509,7 +508,7 @@ void *ser_thread(void *arg)
                     fprintf(stderr, "\n");
                 }
                 if (n_sent > 0) {
-                    info->tx_buff_tail = (info->tx_buff_tail + n_sent) & info->tx_buff_mask;
+                    info->tx_buff_tail = (info->tx_buff_tail + 1) & info->tx_buff_mask;
                 }
             }
         }
@@ -596,6 +595,10 @@ int main(int argc, char **argv)
 
     if (do_sim == 0) {
         ser_thread_info.fd = initialize_serial_port(dev_name, baud_code, 0, parity, 0);
+        if (ser_thread_info.fd < 0) {
+            fprintf(stderr, "unable to open uart [%s]\n", dev_name);
+            exit(1);
+        }
 #if 0
         ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR | O_NONBLOCK);
         tcgetattr(ser_thread_info.fd, &termios);
