@@ -486,7 +486,7 @@ void *ser_thread(void *arg)
             if (info->verbose) {
                 fprintf(stderr, "uart rx %d bytes, tx to udp\n", tmp_rx_len);
                 for (int i = 0; i < tmp_rx_len; ++i) {
-                    fprintf(stderr, "%2.2d ", tmp_rx_buff[i]);
+                    fprintf(stderr, "%2.2x ", tmp_rx_buff[i]);
                     if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                 }
                 fprintf(stderr, "\n");
@@ -555,6 +555,7 @@ int main(int argc, char **argv)
     // int baud = 115200;
     int baud_code = B115200;
     baud_code = B9600; /* TODO */
+    baud_code = B38400; /* TODO */
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
