@@ -116,9 +116,8 @@ int main(int argc, char **argv)
                             byte = 0x10; obuff[0] = byte; crc ^= byte;
                             byte = 0x00; obuff[1] = byte; crc ^= byte;
                             byte = 0x00; obuff[2] = byte; crc ^= byte;
-                            byte = crc; obuff[3] = byte;
-                            obuff[4] = SEND_ACK;
-                            olen = 5;
+                            obuff[3] = SEND_ACK;
+                            olen = 4;
                             write(fd, obuff, olen);
                             for (int i = 0; i < olen; ++i) { printf("tx %d-byte = %2.2x\n", i, obuff[i]); }
                         }
@@ -127,25 +126,32 @@ int main(int argc, char **argv)
                     }
 
                     case STATE_GET_COMMAND: {
-                        if (byte == ~command) {
+                        if (command_ok) {
                             uint8_t crc = 0x00;
                             uint8_t byte;
-                            uint8_t index = 0;
                             obuff[0] = SEND_ACK;
-                            byte = COMMAND_GET; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_GET_VERSION; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_GET_ID; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_READ_MEMORY; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_GO; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_WRITE_MEMORY; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_ERASE_EXTENDED; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_WRITE_PROTECT; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_WRITE_UNPROTECT; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_READ_PROTECT; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_READ_UNPROTECT; obuff[2 + index++] = byte; crc ^= byte;
-                            byte = COMMAND_GET_CHECKSUM; obuff[2 + index++] = byte; crc ^= byte;
-                            obuff[1] = index - 1;
-                            byte = crc; obuff[2 + index] = crc;
+                            int olen = 1;
+                            write(fd, obuff, olen);
+                            for (int i = 0; i < olen; ++i) { printf("tx %d-byte = %2.2x\n", i, obuff[i]); }
+                            byte = 12; obuff[0] = byte; crc ^= byte;
+                            byte = 0x10; obuff[1] = byte; crc ^= byte; /* version */
+                            byte = COMMAND_GET; obuff[2] = byte; crc ^= byte;
+                            byte = COMMAND_GET_VERSION; obuff[3] = byte; crc ^= byte;
+                            byte = COMMAND_GET_ID; obuff[4] = byte; crc ^= byte;
+                            byte = COMMAND_READ_MEMORY; obuff[5] = byte; crc ^= byte;
+                            byte = COMMAND_GO; obuff[6] = byte; crc ^= byte;
+                            byte = COMMAND_WRITE_MEMORY; obuff[7] = byte; crc ^= byte;
+                            byte = COMMAND_ERASE_EXTENDED; obuff[8] = byte; crc ^= byte;
+                            byte = COMMAND_WRITE_PROTECT; obuff[9] = byte; crc ^= byte;
+                            byte = COMMAND_WRITE_UNPROTECT; obuff[10] = byte; crc ^= byte;
+                            byte = COMMAND_READ_PROTECT; obuff[11] = byte; crc ^= byte;
+                            byte = COMMAND_READ_UNPROTECT; obuff[12] = byte; crc ^= byte;
+                            byte = COMMAND_GET_CHECKSUM; obuff[13] = byte; crc ^= byte;
+                            // byte = crc; obuff[13] = crc;
+                            obuff[14] = SEND_ACK;
+                            olen = 15;
+                            write(fd, obuff, olen);
+                            for (int i = 0; i < olen; ++i) { printf("tx %d-byte = %2.2x\n", i, obuff[i]); }
                         }
                         state = STATE_IDLE;
                         break;
