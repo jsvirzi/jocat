@@ -416,7 +416,7 @@ void *udp_thread(void *args)
                 if (info->verbose) {
                     fprintf(stderr, "data received with length = %zd. sent to uart\n", rx_bytes);
                     for (int i = 0; i < rx_bytes; ++i) {
-                        fprintf(stderr, "%2.2d ", rx_buff[i]);
+                        fprintf(stderr, "%2.2x ", rx_buff[i]);
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");
@@ -500,9 +500,9 @@ void *ser_thread(void *arg)
                 int n_sent = n_send;
                 if (info->fd) { n_sent = write(info->fd, tx_buff, n_send); }
                 if (info->verbose) {
-                    fprintf(stderr, "data(length = %d) emitted on uart\n", n_sent);
+                    fprintf(stderr, "data(length = %d) emitted on uart: ", n_sent);
                     for (int i = 0; i < n_sent; ++i) {
-                        fprintf(stderr, "%2.2d ", tx_buff[i]);
+                        fprintf(stderr, "%2.2x ", tx_buff[i]);
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");

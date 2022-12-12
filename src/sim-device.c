@@ -4,6 +4,7 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include "serial-port.h"
 
