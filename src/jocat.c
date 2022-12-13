@@ -282,6 +282,7 @@ CmdThreadInfo cmd_thread_info;
 void delay_ms(unsigned int ms) {
     struct timeval tv;
     tv.tv_sec = ms / 1000ULL;
+    ms = ms - (ms / 1000) * 1000;
     tv.tv_usec = ms * 1000ULL;
     select(0, NULL, NULL, NULL, &tv);
 }
@@ -555,12 +556,13 @@ int main(int argc, char **argv)
     // int baud = 115200;
     int baud_code = B115200;
     baud_code = B9600; /* TODO */
-    baud_code = B38400; /* TODO */
+    // baud_code = B38400; /* TODO */
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
     int do_sim = 0;
     int parity = 2;
+    int do_test = 0;
 
     /* serial and udp threads start in known positions */
     initialize_serial_thread(&ser_thread_info);
@@ -587,6 +589,8 @@ int main(int argc, char **argv)
             ser_thread_info.verbose = 1;
             udp_thread_info.verbose = 1;
             cmd_thread_info.verbose = 1;
+        } else if (strcmp(argv[i], "-test") == 0) {
+            do_test = 1;
         } else if (strcmp(argv[i], "-flush") == 0) {
             do_flush = 1;
         } else if (strcmp(argv[i], "-sim") == 0) {
@@ -654,7 +658,16 @@ int main(int argc, char **argv)
 //    pthread_setname_np(cmd_thread_info.thread_id, cmd_thread_info.thread_name);
 
     while (cmd_server->run) {
-        sleep(1);
+        if (do_test == 0) {
+            sleep(1);
+        } else {
+            static uint8_t test_pattern[256];
+            for (int i = 0; i < sizeof (test_pattern); ++i) { test_pattern[i] = i; }
+            static int test_counter = 0;
+            fprintf(stderr, "test pattern %d\n", ++test_counter);
+            serial_xmit(&ser_thread_info, test_pattern, sizeof (test_pattern));
+            delay_ms(1000);
+        }
     }
 
     cmd_thread_info.run = 0;
