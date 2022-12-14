@@ -556,7 +556,7 @@ int main(int argc, char **argv)
     // int baud = 115200;
     int baud_code = B115200;
     baud_code = B9600; /* TODO */
-    // baud_code = B38400; /* TODO */
+    baud_code = B57600; /* TODO */
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
@@ -590,7 +590,7 @@ int main(int argc, char **argv)
             udp_thread_info.verbose = 1;
             cmd_thread_info.verbose = 1;
         } else if (strcmp(argv[i], "-test") == 0) {
-            do_test = 1;
+            do_test = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-flush") == 0) {
             do_flush = 1;
         } else if (strcmp(argv[i], "-sim") == 0) {
@@ -662,11 +662,24 @@ int main(int argc, char **argv)
             sleep(1);
         } else {
             static uint8_t test_pattern[256];
-            for (int i = 0; i < sizeof (test_pattern); ++i) { test_pattern[i] = i; }
+            int test_len = 0;
+            if (do_test == 1) {
+                test_len = sizeof (test_pattern);
+                for (int i = 0; i < sizeof (test_pattern); ++i) { test_pattern[i] = i; }
+            } else if (do_test == 2) {
+                test_len = 1;
+                for (int i = 0; i < sizeof (test_pattern); ++i) { test_pattern[i] = 0x7f; }
+            }
             static int test_counter = 0;
             fprintf(stderr, "test pattern %d\n", ++test_counter);
-            serial_xmit(&ser_thread_info, test_pattern, sizeof (test_pattern));
+            serial_xmit(&ser_thread_info, test_pattern, test_len);
             delay_ms(1000);
+            uint8_t byte = 0;
+            int n = serial_recv(&ser_thread_info, &byte, 1);
+            if (byte == 0x79) {
+                fprintf(stderr, "found ACK\n");
+                exit (0);
+            }
         }
     }
 
