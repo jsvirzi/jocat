@@ -1,0 +1,6 @@
+build/
+src/jocat
+src/send-command
+.idea/
+cmake-build-debug/
+

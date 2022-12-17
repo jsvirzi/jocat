@@ -336,7 +336,7 @@ int process_command(CmdThreadInfo *info, uint8_t *rx_buff, unsigned int rx_bytes
         int flag = (rx_buff[dtr_command_len] == '0') ? 0 : 1;
         status = process_dtr(info->serial_thread_info->fd, flag);
     } else if (memcmp(rx_buff, rts_command_str, rts_command_len) == 0) {
-        int flag = (rx_buff[rts_command_len] == '0') ? 1 : 0; /* rts is inverted */
+        int flag = (rx_buff[rts_command_len] == '0') ? 0 : 1;
         status = process_rts(info->serial_thread_info->fd, flag);
     } else if (memcmp(rx_buff, bye_command_str, bye_command_len) == 0) {
         info->udp_server.run = 0;
