@@ -416,7 +416,7 @@ void *udp_thread(void *args)
                 if (info->verbose) {
                     fprintf(stderr, "data received with length = %zd. sent to uart\n", rx_bytes);
                     for (int i = 0; i < rx_bytes; ++i) {
-                        fprintf(stderr, "%2.2d ", rx_buff[i]);
+                        fprintf(stderr, "%2.2x ", rx_buff[i]);
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");
@@ -502,7 +502,7 @@ void *ser_thread(void *arg)
                 if (info->verbose) {
                     fprintf(stderr, "data(length = %d) emitted on uart\n", n_sent);
                     for (int i = 0; i < n_sent; ++i) {
-                        fprintf(stderr, "%2.2d ", tx_buff[i]);
+                        fprintf(stderr, "%2.2x ", tx_buff[i]);
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");
@@ -554,8 +554,7 @@ int main(int argc, char **argv)
     unsigned char latency = 5;
     // int baud = 115200;
     int baud_code = B115200;
-    baud_code = B9600; /* TODO */
-    baud_code = B38400; /* TODO */
+    baud_code = B57600; /* TODO */
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
@@ -572,7 +571,7 @@ int main(int argc, char **argv)
     cmd_thread_info.serial_thread_info = &ser_thread_info;
     ser_thread_info.udp_thread_info = &udp_thread_info;
 
-    snprintf(dev_name, sizeof (dev_name), "/dev/ttyUSB0");
+    snprintf(dev_name, sizeof (dev_name), "/dev/ttyUSB2");
     for (int i = 0; i < argc; ++i) {
         if (strcmp(argv[i], "-debug") == 0) {
             debug = 1;
