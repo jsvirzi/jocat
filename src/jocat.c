@@ -334,11 +334,9 @@ int process_command(CmdThreadInfo *info, uint8_t *rx_buff, unsigned int rx_bytes
     int status = ERROR_CODE_FAILURE; /* guilty until proven innocent */
     if (memcmp(rx_buff, dtr_command_str, dtr_command_len) == 0) {
         int flag = (rx_buff[dtr_command_len] == '0') ? 0 : 1;
-        flag = flag ? 0 : 1;
         status = process_dtr(info->serial_thread_info->fd, flag);
     } else if (memcmp(rx_buff, rts_command_str, rts_command_len) == 0) {
-        int flag = (rx_buff[rts_command_len] == '0') ? 0 : 1;
-        flag = flag ? 0 : 1;
+        int flag = (rx_buff[rts_command_len] == '0') ? 1 : 0; /* rts is inverted */
         status = process_rts(info->serial_thread_info->fd, flag);
     } else if (memcmp(rx_buff, bye_command_str, bye_command_len) == 0) {
         info->udp_server.run = 0;
@@ -362,14 +360,8 @@ void *cmd_thread(void *args)
                 uint8_t *rx_buff = info->rx_buff[info->rx_buff_head];
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
-                /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
                 if (info->verbose) {
                     fprintf(stderr, "cmmd [%s] received with length = %zd\n", rx_buff, rx_bytes);
-//                    for (int i = 0; i < rx_bytes; ++i) {
-//                        fprintf(stderr, "%2.2d ", rx_buff[i]);
-//                        if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
-//                    }
-//                    fprintf(stderr, "\n");
                 }
                 process_command(info, rx_buff, rx_bytes);
                 info->rx_buff_head = new_head;
@@ -412,8 +404,7 @@ void *udp_thread(void *args)
                 unsigned int rx_size = sizeof (info->rx_buff[0]);
                 ssize_t rx_bytes = recvfrom(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, &length);
                 int tx_bytes = serial_xmit(info->serial_thread_info, rx_buff, rx_bytes);
-                /* TODO echoes */ // sendto(server->socket_fd, rx_buff, rx_size, 0, (struct sockaddr *) &server->client_addr, sizeof (server->client_addr));
-                if (info->verbose) {
+                if (info->verbose > 1) {
                     fprintf(stderr, "data received with length = %zd. sent to uart\n", rx_bytes);
                     for (int i = 0; i < rx_bytes; ++i) {
                         fprintf(stderr, "%2.2x ", rx_buff[i]);
@@ -484,10 +475,11 @@ void *ser_thread(void *arg)
             int tmp_rx_len = read(info->fd, tmp_rx_buff, sizeof (tmp_rx_buff));
             udp_xmit(info->udp_thread_info, tmp_rx_buff, tmp_rx_len);
             if (info->verbose) {
-                fprintf(stderr, "uart rx %d bytes, tx to udp\n", tmp_rx_len);
+                fprintf(stderr, "================================================== uart rx %d bytes, tx to udp\n", tmp_rx_len);
+                fprintf(stderr, "================================================== ");
                 for (int i = 0; i < tmp_rx_len; ++i) {
                     fprintf(stderr, "%2.2x ", tmp_rx_buff[i]);
-                    if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
+                    if (i && ((i % 16) == 0)) { fprintf(stderr, "\n================================================== "); }
                 }
                 fprintf(stderr, "\n");
             }
@@ -500,10 +492,10 @@ void *ser_thread(void *arg)
                 int n_sent = n_send;
                 if (info->fd) { n_sent = write(info->fd, tx_buff, n_send); }
                 if (info->verbose) {
-                    fprintf(stderr, "data(length = %d) emitted on uart\n", n_sent);
+                    fprintf(stderr, "data(length = %d) emitted on uart", n_sent);
                     for (int i = 0; i < n_sent; ++i) {
+                        if ((i % 16) == 0) { fprintf(stderr, "\n"); }
                         fprintf(stderr, "%2.2x ", tx_buff[i]);
-                        if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");
                 }

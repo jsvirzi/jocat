@@ -3,7 +3,7 @@
 ## building jocat
 
 ### manually
-    gcc jocat.c -o jocat -pthread
+    gcc jocat.c serial-port.c -pthread -o jocat
     gcc send-command.c -o send-command -pthread
 
 ### standard
