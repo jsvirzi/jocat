@@ -99,14 +99,16 @@ int main(void)
 
   /* USER CODE END 2 */
 
+  static const char message[] = "hello, world. this is a test";
+  static const int message_len = sizeof (message);
+  static const int UART_TIMEOUT = 100;
+
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
 	  HAL_Delay(1000);
-	  static int UART_TIMEOUT = 100;
-	  HAL_UART_Transmit(&huart2, "hello, world", 13, UART_TIMEOUT);
-	  HAL_UART_Transmit(&huart3, "hello, world", 13, UART_TIMEOUT);
+	  HAL_UART_Transmit(&huart3, message, message_len, UART_TIMEOUT);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
