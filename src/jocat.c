@@ -143,6 +143,8 @@ int udp_room(SerThreadInfo *info);
 int serial_xmit(SerThreadInfo *info, uint8_t *tx_buff, int n);
 int serial_recv(SerThreadInfo *info, uint8_t *rx_buff, int n);
 
+int do_human = 0;
+
 /**
  *
  * @brief initializes serial thread to its default parameters
@@ -407,7 +409,11 @@ void *udp_thread(void *args)
                 if (info->verbose > 1) {
                     fprintf(stderr, "data received with length = %zd. sent to uart\n", rx_bytes);
                     for (int i = 0; i < rx_bytes; ++i) {
-                        fprintf(stderr, "%2.2x ", rx_buff[i]);
+                        if (do_human == 0) {
+                            fprintf(stderr, "%2.2x ", rx_buff[i]);
+                        } else {
+                            fprintf(stderr, "%c", rx_buff[i]);
+                        }
                         if (i && ((i % 16) == 0)) { fprintf(stderr, "\n"); }
                     }
                     fprintf(stderr, "\n");
@@ -478,7 +484,11 @@ void *ser_thread(void *arg)
                 fprintf(stderr, "================================================== uart rx %d bytes, tx to udp\n", tmp_rx_len);
                 fprintf(stderr, "================================================== ");
                 for (int i = 0; i < tmp_rx_len; ++i) {
-                    fprintf(stderr, "%2.2x ", tmp_rx_buff[i]);
+                    if (do_human == 0) {
+                        fprintf(stderr, "%2.2x ", tmp_rx_buff[i]);
+                    } else {
+                        fprintf(stderr, "%c", tmp_rx_buff[i]);
+                    }
                     if (i && ((i % 16) == 0)) { fprintf(stderr, "\n================================================== "); }
                 }
                 fprintf(stderr, "\n");
@@ -546,7 +556,6 @@ int main(int argc, char **argv)
     unsigned char latency = 5;
     // int baud = 115200;
     int baud_code = B115200;
-    baud_code = B57600; /* TODO */
     int udp_port = 55151;
     int cmd_port = 55152;
     int status;
@@ -571,6 +580,10 @@ int main(int argc, char **argv)
             snprintf(dev_name, sizeof (dev_name), "%s", argv[++i]);
         } else if (strcmp(argv[i], "-listen") == 0) {
             do_listen = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-parity") == 0) {
+            parity = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "-baud") == 0) {
+            baud_code = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-port") == 0) {
             udp_port = atoi(argv[++i]);
             cmd_port = udp_port + 1;
@@ -582,8 +595,14 @@ int main(int argc, char **argv)
             do_flush = 1;
         } else if (strcmp(argv[i], "-sim") == 0) {
             do_sim = 1;
+        } else if (strcmp(argv[i], "-human") == 0) {
+            do_human = 1;
         }
     }
+
+    fprintf(stdout, "parity %d chosen\n", parity);
+    fprintf(stdout, "baud rate = %d\n", baud_code);
+    fprintf(stdout, "B9600 = %d, B57600=%d. B115200 = %d\n", B9600, B57600, B115200);
 
     if (do_sim == 0) {
         ser_thread_info.fd = initialize_serial_port(dev_name, baud_code, 0, parity, 0);
