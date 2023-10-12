@@ -95,23 +95,27 @@ void process_hold(stm_interface_stack_t *stack)
     vehicle_data_t vdm[1];
     p = stack->rx_hold;
     uint32_t status;
+    int k = 0;
+    int k_max = len - 1;
     if (strncmp(stack->rx_hold, vehicle_msg_str, vehicle_msg_str_len) == 0) {
-        while (*p++) { ; }
-        sscanf(p, "%x", &status);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->gtime);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->ltime);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->ticks);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->speed);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->timer);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->n_can_msgs);
-        while (*p++) { ; }
-        sscanf(p, "%x", &vdm->index);
+        do {
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%x", &status);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%x", &vdm->gtime);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%x", &vdm->ltime);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%x", &vdm->ticks);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%x", &vdm->speed);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%x", &vdm->timer);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%u", &vdm->n_can_msgs);
+            while (p[k++]) { if (k >= k_max) break; }
+            sscanf(&p[k], "%u", &vdm->index);
+        } while (0);
         char msg_string[128];
         printf("O=$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*\n", 0,
             vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
