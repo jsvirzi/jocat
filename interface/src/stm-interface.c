@@ -79,6 +79,8 @@ void *stm_interface_task(void *arg)
         exit(EXIT_FAILURE);
     }
 
+    stack->run = 1;
+
     memset(&servaddr, 0, sizeof(servaddr));
 
     servaddr.sin_family = AF_INET;
@@ -119,6 +121,9 @@ int initialize_stm_interface(void *p_stack)
     stm_interface_stack_t *stack = (stm_interface_stack_t *) p_stack;
     if (stack == NULL) { stack = &g_stm_interface; }
     stack->vehicle_data_mask = MAX_VEHICLES - 1;
+
+    stack->verbose = 1;
+    stack->port = DEFAULT_PORT;
 
     int status = pthread_create(&stack->thread_id, NULL, stm_interface_task, stack);
     if (status != 0) {
@@ -165,7 +170,6 @@ static uint32_t elapsed_time(void)
 
 int main(int argc, char **argv) {
     int port = DEFAULT_PORT;
-    int sockfd = 0;
     int debug = 0;
     int verbose = 0;
     int do_listen = 0;
@@ -186,12 +190,12 @@ int main(int argc, char **argv) {
     uint32_t now = elapsed_time();
     uint32_t end_time = 0;
     if (do_listen) { end_time = now + do_listen; }
+    initialize_stm_interface(NULL);
     while ((end_time == 0) || (now < end_time)) {
         now = elapsed_time();
-        if (verbose) { fprintf(stderr, "now = %d waiting for %d\n", now, end_time); }
     }
+    close_stm_interface(NULL);
 
-    close(sockfd);
     return 0;
 }
 
