@@ -103,17 +103,17 @@ void process_hold(stm_interface_stack_t *stack)
             while (p[k++]) { if (k >= k_max) break; }
             sscanf(&p[k], "%x", &vdm->gtime);
             while (p[k++]) { if (k >= k_max) break; }
-            sscanf(&p[k], "%x", &vdm->ltime);
+            sscanf(&p[k], "%hx", &vdm->ltime);
             while (p[k++]) { if (k >= k_max) break; }
             sscanf(&p[k], "%x", &vdm->ticks);
             while (p[k++]) { if (k >= k_max) break; }
-            sscanf(&p[k], "%x", &vdm->speed);
+            sscanf(&p[k], "%hx", &vdm->speed);
             while (p[k++]) { if (k >= k_max) break; }
-            sscanf(&p[k], "%x", &vdm->timer);
+            sscanf(&p[k], "%hx", &vdm->timer);
             while (p[k++]) { if (k >= k_max) break; }
-            sscanf(&p[k], "%u", &vdm->n_can_msgs);
+            sscanf(&p[k], "%hu", &vdm->n_can_msgs);
             while (p[k++]) { if (k >= k_max) break; }
-            sscanf(&p[k], "%u", &vdm->index);
+            sscanf(&p[k], "%hu", &vdm->index);
         } while (0);
 
 #if 0
@@ -253,25 +253,4 @@ int consume_vehicle_data(void *p_stack, vehicle_data_t *vdm)
         return 1; /* new data */
     }
     return 0; /* no new data */
-}
-
-int main(int argc, char **argv) {
-    int port = DEFAULT_PORT;
-
-    for (int i = 1; i < argc; ++i) { if ((strcmp(argv[i], "-p") == 0) || (strcmp(argv[i], "--port") == 0)) { port = atoi(argv[++i]); } }
-
-    void *stm_stack = NULL;
-    initialize_stm_interface(stm_stack, port);
-    while (1) {
-        vehicle_data_t vehicle_data;
-        int status = consume_vehicle_data(stm_stack, &vehicle_data);
-        if (status > 0) {
-            vehicle_data_t *vdm = &vehicle_data;
-            printf("$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*\n", 0,
-                vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
-        }
-    }
-    close_stm_interface(stm_stack);
-
-    return 0;
 }
