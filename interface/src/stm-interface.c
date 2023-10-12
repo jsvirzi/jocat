@@ -21,6 +21,7 @@
 #define MAX_VEHICLES (256)
 
 #include "vdm.h"
+#include "stm-interface.h"
 
 typedef struct {
     int run;
@@ -116,14 +117,16 @@ void *stm_interface_task(void *arg)
     return NULL;
 }
 
-int initialize_stm_interface(void *p_stack)
+int initialize_stm_interface(void *p_stack, int udp_port)
 {
     stm_interface_stack_t *stack = (stm_interface_stack_t *) p_stack;
     if (stack == NULL) { stack = &g_stm_interface; }
     stack->vehicle_data_mask = MAX_VEHICLES - 1;
 
+#ifdef STM_DEBUG
     stack->verbose = 1;
-    stack->port = DEFAULT_PORT;
+#endif
+    stack->port = (udp_port == 0) ? DEFAULT_PORT : udp_port;
 
     int status = pthread_create(&stack->thread_id, NULL, stm_interface_task, stack);
     if (status != 0) {
@@ -168,44 +171,31 @@ static uint32_t elapsed_time(void)
     return ts_diff;
 }
 
-int main(int argc, char **argv) {
-    int port = DEFAULT_PORT;
-    int debug = 0;
-    int verbose = 0;
-    int do_listen = 0;
-    ssize_t command_len = 0;
-
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "-verbose") == 0) {
-            verbose = 1;
-        } else if (strcmp(argv[i], "-debug") == 0) {
-            debug = 1;
-        } else if ((strcmp(argv[i], "-l") == 0) || (strcmp(argv[i], "--listen") == 0)) {
-            do_listen = atoi(argv[++i]);
-        } else if ((strcmp(argv[i], "-p") == 0) || (strcmp(argv[i], "--port") == 0)) {
-            port = atoi(argv[++i]);
-        }
-    }
-
-    uint32_t now = elapsed_time();
-    uint32_t end_time = 0;
-    if (do_listen) { end_time = now + do_listen; }
-    initialize_stm_interface(NULL);
-    while ((end_time == 0) || (now < end_time)) {
-        now = elapsed_time();
-    }
-    close_stm_interface(NULL);
-
-    return 0;
-}
-
 int consume_vehicle_data(void *p_stack, vehicle_data_t *vdm)
 {
     stm_interface_stack_t *stack = (stm_interface_stack_t *) p_stack;
     if (stack == NULL) { stack = &g_stm_interface; }
-    uint8_t uart_msg_string[256]; /* TODO */
-    uint32_t stats = 0;
-    int len = snprintf(uart_msg_string, sizeof (uart_msg_string), "$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*\r\n", stats,
-        vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
+    return 0;
+}
+
+int main(int argc, char **argv) {
+    int port = DEFAULT_PORT;
+
+    for (int i = 1; i < argc; ++i) { if ((strcmp(argv[i], "-p") == 0) || (strcmp(argv[i], "--port") == 0)) { port = atoi(argv[++i]); } }
+
+    void *stm_stack = NULL;
+    initialize_stm_interface(stm_stack, port);
+    while (1) {
+        vehicle_data_t vehicle_data;
+        int status = consume_vehicle_data(stm_stack, &vehicle_data);
+        if (status > 0) {
+            vehicle_data_t *vdm = &vehicle_data;
+            uint8_t msg_string[256];
+            int len = snprintf(msg_string, sizeof (msg_string), "$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*", 0,
+                vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
+        }
+    }
+    close_stm_interface(stm_stack);
+
     return 0;
 }
