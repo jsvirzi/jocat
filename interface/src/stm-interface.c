@@ -89,33 +89,32 @@ void process_hold(stm_interface_stack_t *stack)
     const unsigned int vehicle_msg_str_len = sizeof (vehicle_msg_str) - 1;
     int len = stack->rx_hold_head;
     uint8_t *p = stack->rx_hold;
+    p[len] = 0; /* TODO */
+    printf("I=%s\n", p);
     for (int i = 0; i < len; ++i) { if (p[i] == ',') { p[i] = 0; }} /* replace commas with null-termination */
-    // int len = snprintf(msg_string, sizeof (msg_string), "$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*", 0,
-    //    vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
     vehicle_data_t vdm[1];
     p = stack->rx_hold;
+    uint32_t status;
     if (strncmp(stack->rx_hold, vehicle_msg_str, vehicle_msg_str_len) == 0) {
         while (*p++) { ; }
-//        ++p;
+        sscanf(p, "%x", &status);
+        while (*p++) { ; }
         sscanf(p, "%x", &vdm->gtime);
         while (*p++) { ; }
-//        ++p;
         sscanf(p, "%x", &vdm->ltime);
         while (*p++) { ; }
-//        ++p;
         sscanf(p, "%x", &vdm->ticks);
         while (*p++) { ; }
-//        ++p;
         sscanf(p, "%x", &vdm->speed);
         while (*p++) { ; }
-//        ++p;
         sscanf(p, "%x", &vdm->timer);
         while (*p++) { ; }
-//        ++p;
         sscanf(p, "%x", &vdm->n_can_msgs);
         while (*p++) { ; }
-//        ++p;
         sscanf(p, "%x", &vdm->index);
+        char msg_string[128];
+        printf("O=$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*\n", 0,
+            vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
     }
 }
 
