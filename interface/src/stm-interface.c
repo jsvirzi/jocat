@@ -88,12 +88,11 @@ void process_hold(stm_interface_stack_t *stack)
     const char vehicle_msg_str[] = "$VEHICLE";
     const unsigned int vehicle_msg_str_len = sizeof (vehicle_msg_str) - 1;
     int len = stack->rx_hold_head;
-    uint8_t *p = stack->rx_hold;
-    p[len] = 0; /* TODO */
-    printf("I=%s\n", p);
+    uint8_t * const p = stack->rx_hold;
+    p[len] = 0;
+    // printf("I=%s\n", p);
     for (int i = 0; i < len; ++i) { if (p[i] == ',') { p[i] = 0; }} /* replace commas with null-termination */
-    vehicle_data_t vdm[1];
-    p = stack->rx_hold;
+    vehicle_data_t *vdm = &stack->vehicle_data[stack->vehicle_data_head];
     uint32_t status;
     int k = 0;
     int k_max = len - 1;
@@ -116,9 +115,14 @@ void process_hold(stm_interface_stack_t *stack)
             while (p[k++]) { if (k >= k_max) break; }
             sscanf(&p[k], "%u", &vdm->index);
         } while (0);
+
+#if 0
         char msg_string[128];
         printf("O=$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*\n", 0,
             vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
+#endif
+
+        stack->vehicle_data_head = (stack->vehicle_data_head + 1) & stack->vehicle_data_mask;
     }
 }
 
@@ -243,7 +247,12 @@ int consume_vehicle_data(void *p_stack, vehicle_data_t *vdm)
 {
     stm_interface_stack_t *stack = (stm_interface_stack_t *) p_stack;
     if (stack == NULL) { stack = &g_stm_interface; }
-    return 0;
+    if (stack->vehicle_data_head != stack->vehicle_data_tail) {
+        *vdm = stack->vehicle_data[stack->vehicle_data_tail];
+        stack->vehicle_data_tail = (stack->vehicle_data_tail + 1) & stack->vehicle_data_mask;
+        return 1; /* new data */
+    }
+    return 0; /* no new data */
 }
 
 int main(int argc, char **argv) {
@@ -258,8 +267,7 @@ int main(int argc, char **argv) {
         int status = consume_vehicle_data(stm_stack, &vehicle_data);
         if (status > 0) {
             vehicle_data_t *vdm = &vehicle_data;
-            uint8_t msg_string[256];
-            int len = snprintf(msg_string, sizeof (msg_string), "$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*", 0,
+            printf("$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*\n", 0,
                 vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
         }
     }
