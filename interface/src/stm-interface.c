@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <ctype.h>
 
 #define DEFAULT_PORT 55151
 #define MAXLINE 1024
@@ -22,6 +23,9 @@
 
 #include "vdm.h"
 #include "stm-interface.h"
+
+#define MAX_BUFFERS (64)
+#define MAX_BUFFER_SIZE (1024)
 
 typedef struct {
     int run;
@@ -36,6 +40,14 @@ typedef struct {
     unsigned int vehicle_data_pos;
     vehicle_data_t vehicle_data[MAX_VEHICLES];
     char thread_name[32];
+    uint8_t rx_buff[MAX_BUFFERS][MAX_BUFFER_SIZE];
+    uint8_t rx_hold[MAX_BUFFER_SIZE];
+    unsigned int rx_head;
+    unsigned int rx_tail;
+    unsigned int rx_mask;
+    unsigned int rx_hold_head;
+    unsigned int rx_hold_mask;
+    unsigned int rx_buff_size;
 } stm_interface_stack_t;
 
 static stm_interface_stack_t g_stm_interface;
@@ -70,6 +82,43 @@ static unsigned int check_socket(int socket_fd)
     return (FD_ISSET(socket_fd, &rset)) ? 1 : 0;
 }
 
+void process_hold(stm_interface_stack_t *stack)
+{
+    uint32_t TODO_x;
+    const char vehicle_msg_str[] = "$VEHICLE";
+    const unsigned int vehicle_msg_str_len = sizeof (vehicle_msg_str) - 1;
+    int len = stack->rx_hold_head;
+    uint8_t *p = stack->rx_hold;
+    for (int i = 0; i < len; ++i) { if (p[i] == ',') { p[i] = 0; }} /* replace commas with null-termination */
+    // int len = snprintf(msg_string, sizeof (msg_string), "$VEHICLE,%8.8x,%8.8x,%4.4x,%8.8x,%4.4x,%4.4x,%u,%u*", 0,
+    //    vdm->gtime, vdm->ltime, vdm->ticks, vdm->speed, vdm->timer, vdm->n_can_msgs, vdm->index);
+    vehicle_data_t vdm[1];
+    p = stack->rx_hold;
+    if (strncmp(stack->rx_hold, vehicle_msg_str, vehicle_msg_str_len) == 0) {
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->gtime);
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->ltime);
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->ticks);
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->speed);
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->timer);
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->n_can_msgs);
+        while (*p++) { ; }
+//        ++p;
+        sscanf(p, "%x", &vdm->index);
+    }
+}
+
 void *stm_interface_task(void *arg)
 {
     char buffer[MAXLINE] = { 0 };
@@ -96,7 +145,20 @@ void *stm_interface_task(void *arg)
         int flag = check_socket(stack->socket_fd);
         if (flag == 1) {
             int len = sizeof (servaddr);
+            // uint8_t *buffer = stack->rx_buff[stack->rx_head];
+            // int n = recvfrom(stack->socket_fd, buffer, stack->rx_buff_size, 0, (struct sockaddr *) &servaddr, &len);
             int n = recvfrom(stack->socket_fd, buffer, sizeof (buffer), 0, (struct sockaddr *) &servaddr, &len);
+            if (n > 0) {
+                for (int i = 0; i < n; ++i) {
+                    uint8_t byte = toupper(buffer[i]);
+                    if (byte == '$') { stack->rx_hold_head = 0; }
+                    stack->rx_hold[stack->rx_hold_head] = byte;
+                    stack->rx_hold_head = (stack->rx_hold_head + 1) & stack->rx_hold_mask;
+                    if (byte == '*') {
+                        process_hold(stack);
+                    }
+                }
+            }
             if (stack->verbose) {
                 fprintf(stderr, "recvfrom(%p, %ld) => %d\n", buffer, sizeof(buffer), n);
                 if (n > 0) {
@@ -122,6 +184,9 @@ int initialize_stm_interface(void *p_stack, int udp_port)
     stm_interface_stack_t *stack = (stm_interface_stack_t *) p_stack;
     if (stack == NULL) { stack = &g_stm_interface; }
     stack->vehicle_data_mask = MAX_VEHICLES - 1;
+    stack->rx_mask = MAX_BUFFERS - 1;
+    stack->rx_buff_size = MAX_BUFFER_SIZE;
+    stack->rx_hold_mask = MAX_BUFFER_SIZE - 1;
 
 #ifdef STM_DEBUG
     stack->verbose = 1;
