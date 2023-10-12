@@ -561,6 +561,7 @@ int main(int argc, char **argv)
     int status;
     int do_sim = 0;
     int parity = 2;
+    int do_reset = 0;
 
     /* serial and udp threads start in known positions */
     initialize_serial_thread(&ser_thread_info);
@@ -597,6 +598,8 @@ int main(int argc, char **argv)
             do_sim = 1;
         } else if (strcmp(argv[i], "-human") == 0) {
             do_human = 1;
+        } else if (strcmp(argv[i], "-reset") == 0) {
+            do_reset = 1;
         }
     }
 
@@ -610,6 +613,14 @@ int main(int argc, char **argv)
             fprintf(stderr, "unable to open uart [%s]\n", dev_name);
             exit(1);
         }
+
+        if (do_reset) {
+            fprintf(stderr, "resetting STM device with BOOT0=0\n");
+            process_dtr(cmd_thread_info.serial_thread_info->fd, 0);
+            process_rts(cmd_thread_info.serial_thread_info->fd, 1);
+            process_rts(cmd_thread_info.serial_thread_info->fd, 0);
+        }
+
 #if 0
         ser_thread_info.fd = open(dev_name, O_NOCTTY | O_RDWR | O_NONBLOCK);
         tcgetattr(ser_thread_info.fd, &termios);
