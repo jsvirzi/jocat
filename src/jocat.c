@@ -24,8 +24,8 @@
 #define SERIAL_TX_BUFFER_SIZE UDP_PACKET_SIZE
 #define SERIAL_TX_BUFFERS (16)
 #define SERIAL_RX_BUFFERS (1)
-#define RX_UDP_PACKETS (16)
-#define TX_UDP_PACKETS (16)
+#define RX_UDP_PACKETS (512)
+#define TX_UDP_PACKETS (512)
 #define DEFAULT_LOOP_PACE (10)
 
 #define THREAD_NAME_LENGTH (32)
@@ -395,6 +395,7 @@ void *udp_thread(void *args)
     while (info->run == 0) { delay_ms(1); }
     UdpServerInfo *server = &info->udp_server;
     while (info->run) {
+        server->tx_dir_active = 1; /* consider udp tx packets as well as udp rx packets */
         check_udp_server(server);
 
         if (server->rset_flag) { /* incoming data from udp goes to serial port */
@@ -451,6 +452,8 @@ int udp_xmit(UdpThreadInfo *info, uint8_t *buff, unsigned int len)
         memcpy(tx_buff, buff, n);
         info->tx_len[info->tx_buff_head] = n;
         info->tx_buff_head = new_head;
+    } else {
+        printf("data loss %d bytes occurred head = %d/tail = %d\n", len, info->tx_buff_head, info->tx_buff_tail);
     }
     return n;
 }
@@ -554,7 +557,7 @@ int main(int argc, char **argv)
     struct termios termios;
     char dev_name[64];
     unsigned char latency = 5;
-    // int baud = 115200;
+    int baud_rate = 115200;
     int baud_code = B115200;
     int udp_port = 55151;
     int cmd_port = 55152;
@@ -584,7 +587,15 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "-parity") == 0) {
             parity = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-baud") == 0) {
-            baud_code = atoi(argv[++i]);
+            baud_rate = atoi(argv[++i]);
+            if (baud_rate == 115200) { baud_code = B115200; }
+            else if (baud_rate == 230400) { baud_code = B230400; }
+            else if (baud_rate == 460800) { baud_code = B460800; }
+            else if (baud_rate == 921600) { baud_code = B921600; }
+            else if (baud_rate == 1000000) { baud_code = B1000000; }
+            else if (baud_rate == 2000000) { baud_code = B2000000; }
+            else if (baud_rate == 3000000) { baud_code = B3000000; }
+            else if (baud_rate == 4000000) { baud_code = B4000000; }
         } else if (strcmp(argv[i], "-port") == 0) {
             udp_port = atoi(argv[++i]);
             cmd_port = udp_port + 1;
