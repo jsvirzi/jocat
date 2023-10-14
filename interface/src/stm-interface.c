@@ -173,6 +173,8 @@ void *stm_interface_task(void *arg)
                         char ch = buffer[i];
                         if (ch != '\r') {
                             fprintf(stderr, "%c", buffer[i]);
+                        } else {
+                            fprintf(stderr, "\n");
                         }
                     }
                 }
